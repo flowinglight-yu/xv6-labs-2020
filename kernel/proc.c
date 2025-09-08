@@ -127,6 +127,7 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+   p->trace_mask = 0; // (newly added) 为 trace_mask 设置一个 0 的默认值
   return p;
 }
 
@@ -290,6 +291,8 @@ fork(void)
   np->cwd = idup(p->cwd);
 
   safestrcpy(np->name, p->name, sizeof(p->name));
+
+  np->trace_mask = p->trace_mask;//让子进程继承父进程的 trace_mask
 
   pid = np->pid;
 
@@ -692,4 +695,17 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+// 获取当前系统中运行的进程数量
+uint64
+count_process(void) {
+  uint64 cnt = 0;
+  for(struct proc *p = proc; p < &proc[NPROC]; p++) {
+    // 不需要锁进程 proc 结构，因为我们只需要读取进程列表，不需要写
+    if(p->state != UNUSED) { // 不是 UNUSED 的进程位，就是已经分配的
+        cnt++;
+    }
+  }
+  return cnt;
 }
