@@ -158,9 +158,10 @@ void            uartputc_sync(int);
 int             uartgetc(void);
 
 // vm.c
-void            kvminit(void);
-pagetable_t     kvminit_newpgtbl(void);  
+void            kvminit(void); 
 void            kvminithart(void);
+void            kvm_map_pagetable(pagetable_t);// 为进程添加自己的内核页表，避免使用原有的同一个内核页表
+pagetable_t     kvminit_newpgtbl(void); 
 uint64          kvmpa(pagetable_t, uint64);
 void            kvmmap(pagetable_t, uint64, uint64, uint64, int);
 void            kvm_free_kernelpgtbl(pagetable_t);  // 添加释放内核页表函数声明

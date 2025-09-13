@@ -15,6 +15,14 @@ extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
 
+/*
+ * create a direct-map page table for the kernel.
+ */
+void
+kvminit()
+{
+  kernel_pagetable = kvminit_newpgtbl(); // 仍然需要有全局的内核页表，用于内核 boot 过程，以及无进程在运行时使用。
+}
 
 //为进程添加自己的内核页表，避免使用原有的同一个内核页表
 void 
@@ -54,16 +62,6 @@ kvminit_newpgtbl()
 
   return pgtbl;
 }
-
-/*
- * create a direct-map page table for the kernel.
- */
-void
-kvminit()
-{
-  kernel_pagetable = kvminit_newpgtbl(); // 仍然需要有全局的内核页表，用于内核 boot 过程，以及无进程在运行时使用。
-}
-
 // Switch h/w page table register to the kernel's page table,
 // and enable paging.
 void

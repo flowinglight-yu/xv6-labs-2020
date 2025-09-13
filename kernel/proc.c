@@ -501,7 +501,6 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
-        swtch(&c->context, &p->context);
 
         // 切换到进程独立的内核页表
         w_satp(MAKE_SATP(p->kernelpgtbl));
