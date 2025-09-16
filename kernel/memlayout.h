@@ -65,3 +65,6 @@
 //   TRAPFRAME (p->trapframe, used by the trampoline)
 //   TRAMPOLINE (the same page as in the kernel)
 #define TRAPFRAME (TRAMPOLINE - PGSIZE)
+
+//MMAP映射到地址空间的最后一个页
+#define MMAPEND TRAPFRAME//MMAP映射的结束地址,用户地址空间的最后一页是TRAPFRAME，MMAP要在TRAPFRAME的下面（地址空间由高地址指向低地址）。
