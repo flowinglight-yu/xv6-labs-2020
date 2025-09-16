@@ -387,10 +387,33 @@ bmap(struct inode *ip, uint bn)
   }
   bn -= NDIRECT;
 
-  if(bn < NINDIRECT){
+  if(bn < NINDIRECT){ // singly-indirect
     // Load indirect block, allocating if necessary.
     if((addr = ip->addrs[NDIRECT]) == 0)
       ip->addrs[NDIRECT] = addr = balloc(ip->dev);
+    bp = bread(ip->dev, addr);
+    a = (uint*)bp->data;
+    if((addr = a[bn]) == 0){
+      a[bn] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+    brelse(bp);
+    return addr;
+  }
+  bn -= NINDIRECT;
+
+  if(bn < NINDIRECT * NINDIRECT) { // doubly-indirect
+    // Load indirect block, allocating if necessary.
+    if((addr = ip->addrs[NDIRECT+1]) == 0)
+      ip->addrs[NDIRECT+1] = addr = balloc(ip->dev);
+    bp = bread(ip->dev, addr);
+    a = (uint*)bp->data;
+    if((addr = a[bn/NINDIRECT]) == 0){
+      a[bn/NINDIRECT] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+    brelse(bp);
+    bn %= NINDIRECT;
     bp = bread(ip->dev, addr);
     a = (uint*)bp->data;
     if((addr = a[bn]) == 0){
@@ -404,8 +427,9 @@ bmap(struct inode *ip, uint bn)
   panic("bmap: out of range");
 }
 
-// Truncate inode (discard contents).
-// Caller must hold ip->lock.
+
+// 截断inode,释放其所有数据块
+// 调用者必须持有 ip->lock 锁，确保操作原子性
 void
 itrunc(struct inode *ip)
 {
@@ -413,26 +437,76 @@ itrunc(struct inode *ip)
   struct buf *bp;
   uint *a;
 
+  // 第一步：释放所有直接数据块
   for(i = 0; i < NDIRECT; i++){
+    // 检查直接块地址是否已分配
     if(ip->addrs[i]){
+      // 释放该数据块，将其标记为空闲
       bfree(ip->dev, ip->addrs[i]);
+      // 将inode中的地址指针清零
       ip->addrs[i] = 0;
     }
   }
 
-  if(ip->addrs[NDIRECT]){
+  // 第二步：处理一级间接块
+  if(ip->addrs[NDIRECT]){ // 检查一级间接块指针是否存在
+    // 读取一级间接块内容到缓冲区
     bp = bread(ip->dev, ip->addrs[NDIRECT]);
+    // 将缓冲区数据转换为uint数组（包含数据块地址）
     a = (uint*)bp->data;
+    // 遍历一级间接块中的所有条目
     for(j = 0; j < NINDIRECT; j++){
+      // 如果条目指向一个有效的数据块
       if(a[j])
+        // 释放该数据块
         bfree(ip->dev, a[j]);
     }
+    // 释放一级间接块的缓冲区
     brelse(bp);
+    // 释放一级间接块本身
     bfree(ip->dev, ip->addrs[NDIRECT]);
+    // 将inode中的一级间接块指针清零
     ip->addrs[NDIRECT] = 0;
   }
 
+  // 第三步：处理二级间接块（需要两层循环）
+  if(ip->addrs[NDIRECT+1]){ // 检查二级间接块指针是否存在
+    // 读取第一级间接块（包含第二级间接块的地址）
+    bp = bread(ip->dev, ip->addrs[NDIRECT+1]);
+    // 将缓冲区数据转换为uint数组（包含第二级间接块地址）
+    a = (uint*)bp->data;
+    // 遍历第一级间接块中的所有条目
+    for(j = 0; j < NINDIRECT; j++){
+      // 如果条目指向一个有效的第二级间接块
+      if(a[j]) {
+        // 读取第二级间接块内容到缓冲区
+        struct buf *bp2 = bread(ip->dev, a[j]);
+        // 将缓冲区数据转换为uint数组（包含实际数据块地址）
+        uint *a2 = (uint*)bp2->data;
+        // 遍历第二级间接块中的所有条目
+        for(int k = 0; k < NINDIRECT; k++){
+          // 如果条目指向一个有效的数据块
+          if(a2[k])
+            // 释放该数据块
+            bfree(ip->dev, a2[k]);
+        }
+        // 释放第二级间接块的缓冲区
+        brelse(bp2);
+        // 释放第二级间接块本身
+        bfree(ip->dev, a[j]);
+      }
+    }
+    // 释放第一级间接块的缓冲区
+    brelse(bp);
+    // 释放第一级间接块本身（即二级间接块指针块）
+    bfree(ip->dev, ip->addrs[NDIRECT+1]);
+    // 将inode中的二级间接块指针清零
+    ip->addrs[NDIRECT + 1] = 0;
+  }
+
+  // 第四步：更新inode元数据,将文件大小设置为0
   ip->size = 0;
+  // 将更新后的inode信息写回磁盘
   iupdate(ip);
 }
 
